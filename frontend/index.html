@@ -1,0 +1,515 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>DFIR // Kill Chain</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600;700&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg-void:#0A0B0D;
+    --bg-panel:#14161A;
+    --bg-panel-raised:#1B1E24;
+    --border-hair:#262A31;
+    --text-primary:#E7E9EC;
+    --text-dim:#8B92A0;
+    --accent-signal:#3DDC97;
+    --sev-critical:#E5484D;
+    --sev-high:#F2994A;
+    --sev-medium:#F2C94C;
+    --sev-low:#4EA1F2;
+    --sev-info:#6B7280;
+    --mono: 'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    --sans: 'IBM Plex Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;height:100%;}
+  body{
+    background:var(--bg-void);
+    color:var(--text-primary);
+    font-family:var(--sans);
+    -webkit-font-smoothing:antialiased;
+  }
+  a{color:var(--accent-signal);}
+
+  /* ---------- Header + kill chain phase strip (signature element) ---------- */
+  header{
+    padding:18px 28px 14px;
+    border-bottom:1px solid var(--border-hair);
+    display:flex; flex-direction:column; gap:14px;
+  }
+  .topbar{ display:flex; align-items:baseline; justify-content:space-between; }
+  .brand{
+    display:flex; align-items:baseline; gap:10px;
+  }
+  .user-info{ display:flex; align-items:center; gap:12px; }
+  .user-info .who{ font-family:var(--mono); font-size:11px; color:var(--text-dim); }
+  .user-info a.logout{
+    font-family:var(--mono); font-size:11px; color:var(--text-dim); text-decoration:none;
+    border:1px solid var(--border-hair); border-radius:4px; padding:4px 9px;
+  }
+  .user-info a.logout:hover{ color:var(--accent-signal); border-color:var(--accent-signal); }
+  .brand h1{
+    font-family:var(--mono); font-weight:700; font-size:18px; letter-spacing:0.5px; margin:0;
+  }
+  .brand h1 .slash{ color:var(--accent-signal); }
+  .brand small{ color:var(--text-dim); font-family:var(--mono); font-size:11px; }
+
+  .phase-strip{ display:flex; gap:6px; }
+  .phase{
+    flex:1; padding:8px 10px; border-radius:3px; background:var(--bg-panel);
+    border:1px solid var(--border-hair);
+    font-family:var(--mono); font-size:10.5px; color:var(--text-dim);
+    text-align:center; text-transform:uppercase; letter-spacing:0.4px;
+    transition:all .25s ease; position:relative; overflow:hidden;
+  }
+  .phase .count{ display:block; font-size:15px; font-weight:600; color:var(--text-dim); margin-top:2px; }
+  .phase.lit{ border-color:var(--phase-color, var(--accent-signal)); color:var(--text-primary); }
+  .phase.lit .count{ color:var(--phase-color, var(--accent-signal)); }
+  .phase.lit::after{
+    content:""; position:absolute; left:0; bottom:0; width:100%; height:2px;
+    background:var(--phase-color, var(--accent-signal));
+  }
+
+  /* ---------- Layout ---------- */
+  .layout{ display:grid; grid-template-columns:290px 1fr; height:calc(100% - 92px); }
+  .sidebar{
+    border-right:1px solid var(--border-hair); padding:18px; overflow-y:auto;
+    display:flex; flex-direction:column; gap:18px;
+  }
+  .main{ padding:22px 28px; overflow-y:auto; }
+
+  .label-eyebrow{
+    font-family:var(--mono); font-size:10.5px; color:var(--text-dim);
+    text-transform:uppercase; letter-spacing:1px; margin:0 0 10px;
+  }
+
+  /* ---------- Dropzone ---------- */
+  .dropzone{
+    border:1.5px dashed var(--border-hair); border-radius:6px; padding:22px 14px;
+    text-align:center; cursor:pointer; transition:border-color .2s, background .2s;
+  }
+  .dropzone:hover, .dropzone.drag{ border-color:var(--accent-signal); background:rgba(61,220,151,0.04); }
+  .dropzone p{ margin:0; font-size:12.5px; color:var(--text-dim); line-height:1.5; }
+  .dropzone .icon{ font-family:var(--mono); font-size:20px; color:var(--accent-signal); display:block; margin-bottom:6px; }
+  input[type=file]{ display:none; }
+
+  /* ---------- Job list ---------- */
+  .job-list{ display:flex; flex-direction:column; gap:6px; }
+  .job-item{
+    background:var(--bg-panel); border:1px solid var(--border-hair); border-radius:5px;
+    padding:9px 10px; cursor:pointer; transition:border-color .15s;
+  }
+  .job-item:hover{ border-color:#3a3f48; }
+  .job-item.active{ border-color:var(--accent-signal); }
+  .job-item .fname{ font-family:var(--mono); font-size:12px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .job-item .meta{ display:flex; justify-content:space-between; align-items:center; margin-top:5px; }
+  .job-item .stage{ font-size:10.5px; color:var(--text-dim); }
+  .pill{
+    font-family:var(--mono); font-size:9.5px; text-transform:uppercase; letter-spacing:0.4px;
+    padding:2px 6px; border-radius:20px; font-weight:600;
+  }
+  .pill.queued{ background:#2a2d33; color:var(--text-dim); }
+  .pill.running{ background:rgba(78,161,242,0.15); color:var(--sev-low); }
+  .pill.done{ background:rgba(61,220,151,0.15); color:var(--accent-signal); }
+  .pill.error{ background:rgba(229,72,77,0.15); color:var(--sev-critical); }
+  .pill.cancelled{ background:rgba(139,146,160,0.15); color:var(--text-dim); }
+
+  .mini-cancel{
+    font-family:var(--mono); font-size:10px; color:var(--text-dim); cursor:pointer; line-height:1;
+  }
+  .mini-cancel:hover{ color:var(--sev-critical); }
+
+  .empty-state{ color:var(--text-dim); font-size:12.5px; padding:30px 10px; text-align:center; }
+
+  /* ---------- Stat strip ---------- */
+  .stat-strip{ display:flex; gap:10px; margin-bottom:24px; flex-wrap:wrap; }
+  .stat{
+    background:var(--bg-panel); border:1px solid var(--border-hair); border-radius:5px;
+    padding:10px 16px; min-width:100px;
+  }
+  .stat .n{ font-family:var(--mono); font-size:22px; font-weight:700; }
+  .stat .l{ font-size:10.5px; color:var(--text-dim); text-transform:uppercase; letter-spacing:0.5px; margin-top:2px; }
+
+  /* ---------- Section headers ---------- */
+  .section-title{
+    font-family:var(--mono); font-size:12px; font-weight:600; color:var(--text-primary);
+    text-transform:uppercase; letter-spacing:1px; margin:30px 0 12px;
+    padding-bottom:8px; border-bottom:1px solid var(--border-hair);
+  }
+  .section-title:first-of-type{ margin-top:0; }
+
+  /* ---------- Alert triage ---------- */
+  .sev-group{ margin-bottom:8px; border:1px solid var(--border-hair); border-radius:6px; overflow:hidden; }
+  .sev-group summary{
+    cursor:pointer; list-style:none; padding:10px 14px; display:flex; align-items:center; gap:10px;
+    background:var(--bg-panel); font-family:var(--mono); font-size:12px; font-weight:600;
+  }
+  .sev-group summary::-webkit-details-marker{ display:none; }
+  .sev-group summary::before{ content:"▸"; color:var(--text-dim); transition:transform .15s; }
+  .sev-group[open] summary::before{ transform:rotate(90deg); }
+  .sev-dot{ width:9px; height:9px; border-radius:50%; flex-shrink:0; }
+  .sev-badge-count{ margin-left:auto; color:var(--text-dim); font-weight:400; }
+  .alert-row{
+    padding:10px 14px 10px 33px; border-top:1px solid var(--border-hair);
+    background:var(--bg-panel-raised);
+  }
+  .alert-row .title{ font-size:13px; font-weight:600; }
+  .alert-row .tags{ font-family:var(--mono); font-size:10px; color:var(--text-dim); margin-top:4px; }
+  .alert-row .examples{ margin-top:8px; display:flex; flex-direction:column; gap:3px; }
+  .alert-row .example{ font-family:var(--mono); font-size:10.5px; color:var(--text-dim); }
+  .alert-row .example b{ color:var(--text-primary); font-weight:500; }
+  .no-alerts{ color:var(--text-dim); font-size:12.5px; padding:16px; text-align:center; border:1px dashed var(--border-hair); border-radius:6px; }
+
+  /* ---------- Narrative report ---------- */
+  .report-body{
+    background:var(--bg-panel); border:1px solid var(--border-hair); border-radius:6px;
+    padding:20px 24px; font-size:13.5px; line-height:1.7; white-space:pre-wrap;
+  }
+  .report-body .hd{ font-family:var(--mono); color:var(--accent-signal); font-weight:600; display:block; margin:16px 0 6px; }
+  .report-body .hd:first-child{ margin-top:0; }
+
+  details.raw-tree{ margin-top:22px; }
+  details.raw-tree summary{
+    cursor:pointer; font-family:var(--mono); font-size:11.5px; color:var(--text-dim);
+    text-transform:uppercase; letter-spacing:0.5px; padding:8px 0;
+  }
+  details.raw-tree pre{
+    background:var(--bg-panel); border:1px solid var(--border-hair); border-radius:6px;
+    padding:16px; font-family:var(--mono); font-size:11.5px; color:var(--text-dim);
+    overflow-x:auto; white-space:pre-wrap; word-break:break-word;
+  }
+
+  .stage-line{ font-family:var(--mono); font-size:12px; color:var(--text-dim); margin-bottom:16px; }
+  .stage-line .dotpulse{ display:inline-block; width:7px; height:7px; border-radius:50%; background:var(--sev-low); margin-right:8px; animation:pulse 1.2s infinite; }
+  @keyframes pulse{ 0%,100%{opacity:1;} 50%{opacity:.25;} }
+  .error-box{ border:1px solid var(--sev-critical); background:rgba(229,72,77,0.08); border-radius:6px; padding:16px; font-family:var(--mono); font-size:11.5px; color:#f2a3a5; white-space:pre-wrap; }
+
+  .cancel-btn{
+    margin-top:18px; padding:9px 16px; background:transparent; color:var(--sev-critical);
+    border:1px solid var(--sev-critical); border-radius:5px; font-family:var(--mono);
+    font-size:11.5px; text-transform:uppercase; letter-spacing:0.4px; cursor:pointer;
+  }
+  .cancel-btn:hover{ background:rgba(229,72,77,0.1); }
+  .cancel-hint{ font-family:var(--mono); font-size:10.5px; color:var(--text-dim); margin-top:8px; max-width:44ch; }
+
+  .alert-row .rule-path{
+    font-family:var(--mono); font-size:10px; color:var(--text-dim); margin-top:4px; opacity:.85;
+    overflow-wrap:anywhere;
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="topbar">
+    <div class="brand">
+      <h1>DFIR<span class="slash">//</span>KILL CHAIN</h1>
+      <small id="model-tag">local synthesis via ollama</small>
+    </div>
+    <div class="user-info">
+      <span class="who" id="who-tag"></span>
+      <a class="logout" href="#" id="logout-link">Log out</a>
+    </div>
+  </div>
+  <div class="phase-strip" id="phase-strip"></div>
+</header>
+
+<div class="layout">
+  <aside class="sidebar">
+    <div>
+      <p class="label-eyebrow">Ingest evidence</p>
+      <div class="dropzone" id="dropzone">
+        <span class="icon">⬒</span>
+        <p>Drop .evtx / registry hives<br>or click to browse</p>
+        <input type="file" id="file-input" multiple />
+      </div>
+    </div>
+    <div style="flex:1; min-height:0; display:flex; flex-direction:column;">
+      <p class="label-eyebrow">Jobs</p>
+      <div class="job-list" id="job-list">
+        <div class="empty-state">No jobs yet — upload evidence to begin.</div>
+      </div>
+    </div>
+  </aside>
+
+  <main class="main" id="main">
+    <div class="empty-state" style="padding-top:80px;">Select or submit a job to view its kill-chain report.</div>
+  </main>
+</div>
+
+<script>
+const PHASES = [
+  { key: "initial_access", label: "Initial Access", categories: ["process_creation"], color: "#4EA1F2" },
+  { key: "execution", label: "Execution", categories: ["process_creation", "powershell_block"], color: "#4EA1F2" },
+  { key: "priv_esc_evasion", label: "Priv Esc / Evasion", categories: ["create_remote_thread", "process_access", "image_load"], color: "#F2994A" },
+  { key: "persistence", label: "Persistence", categories: ["registry_add", "registry_set", "registry_rename", "service_creation"], color: "#F2C94C" },
+  { key: "c2_exfil", label: "C2 / Exfiltration", categories: ["network_connection", "dns_query"], color: "#E5484D" },
+  { key: "credential_access", label: "Credential Access", categories: ["process_access"], color: "#E5484D" },
+];
+
+let selectedJobId = null;
+let pollTimer = null;
+
+// --- Auth: display current user, wire logout, and bounce to /login if the
+// session expires mid-use (server already gates "/" itself on load).
+document.getElementById("logout-link").addEventListener("click", async (e) => {
+  e.preventDefault();
+  await fetch("/api/auth/logout", { method: "POST" });
+  window.location.href = "/login";
+});
+
+async function loadCurrentUser() {
+  const res = await fetch("/api/auth/me");
+  if (!res.ok) {
+    window.location.href = "/login";
+    return;
+  }
+  const user = await res.json();
+  document.getElementById("who-tag").textContent = user.username;
+}
+
+// Wrap fetch so any 401 (session expired) sends the analyst back to /login
+// instead of the SPA silently breaking.
+const _fetch = window.fetch;
+window.fetch = async (...args) => {
+  const res = await _fetch(...args);
+  if (res.status === 401) {
+    window.location.href = "/login";
+  }
+  return res;
+};
+
+const dropzone = document.getElementById("dropzone");
+const fileInput = document.getElementById("file-input");
+
+dropzone.addEventListener("click", () => fileInput.click());
+["dragover", "dragenter"].forEach(evt =>
+  dropzone.addEventListener(evt, e => { e.preventDefault(); dropzone.classList.add("drag"); })
+);
+["dragleave", "drop"].forEach(evt =>
+  dropzone.addEventListener(evt, e => { e.preventDefault(); dropzone.classList.remove("drag"); })
+);
+dropzone.addEventListener("drop", e => uploadFiles(e.dataTransfer.files));
+fileInput.addEventListener("change", e => uploadFiles(e.target.files));
+
+async function uploadFiles(fileList) {
+  if (!fileList || fileList.length === 0) return;
+  const form = new FormData();
+  for (const f of fileList) form.append("files", f);
+  const res = await fetch("/api/jobs", { method: "POST", body: form });
+  if (!res.ok) { alert("Upload failed: " + (await res.text())); return; }
+  const job = await res.json();
+  selectedJobId = job.id;
+  fileInput.value = "";
+  refreshJobs();
+}
+
+async function refreshJobs() {
+  const res = await fetch("/api/jobs");
+  const jobs = await res.json();
+  renderJobList(jobs);
+  if (!selectedJobId && jobs.length) selectedJobId = jobs[0].id;
+  if (selectedJobId) loadJobDetail(selectedJobId);
+}
+
+function renderJobList(jobs) {
+  const el = document.getElementById("job-list");
+  if (!jobs.length) {
+    el.innerHTML = '<div class="empty-state">No jobs yet — upload evidence to begin.</div>';
+    return;
+  }
+  el.innerHTML = jobs.map(j => `
+    <div class="job-item ${j.id === selectedJobId ? 'active' : ''}" onclick="selectJob('${j.id}')">
+      <div class="fname">${escapeHtml(j.filenames.join(", "))}</div>
+      <div class="meta">
+        <span class="stage">${escapeHtml(j.stage)}</span>
+        <span style="display:flex; align-items:center; gap:8px;">
+          ${(j.status === "queued" || j.status === "running")
+            ? `<span class="mini-cancel" title="Cancel" onclick="event.stopPropagation(); cancelJob('${j.id}')">✕</span>`
+            : ""}
+          <span class="pill ${j.status}">${j.status}</span>
+        </span>
+      </div>
+    </div>
+  `).join("");
+}
+
+function selectJob(id) {
+  selectedJobId = id;
+  refreshJobs();
+}
+
+async function cancelJob(id) {
+  const res = await fetch(`/api/jobs/${id}/cancel`, { method: "POST" });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    alert("Could not cancel: " + (body.detail || res.statusText));
+    return;
+  }
+  // Force a fresh render for this job so the cancelled state shows immediately.
+  lastRenderedJobId = null;
+  refreshJobs();
+}
+
+// Tracks what's currently painted in the main pane so polling doesn't blow
+// away a report the analyst is actively reading (expanded <details>, etc.)
+// once a job has reached a terminal state and its result can't change again.
+let lastRenderedJobId = null;
+let lastRenderedStatus = null;
+
+async function loadJobDetail(id) {
+  const res = await fetch(`/api/jobs/${id}`);
+  if (!res.ok) return;
+  const job = await res.json();
+
+  const terminal = job.status === "done" || job.status === "error" || job.status === "cancelled";
+  if (terminal && job.id === lastRenderedJobId && job.status === lastRenderedStatus) {
+    return; // already showing this exact final state -- don't re-render and collapse open sections
+  }
+
+  renderMain(job);
+  lastRenderedJobId = job.id;
+  lastRenderedStatus = job.status;
+}
+
+function renderMain(job) {
+  const main = document.getElementById("main");
+
+  if (job.status === "queued" || job.status === "running") {
+    main.innerHTML = `
+      <div class="stage-line"><span class="dotpulse"></span>${escapeHtml(job.stage)}</div>
+      <div class="empty-state" style="padding-top:40px;">Analyzing ${escapeHtml(job.filenames.join(", "))}…</div>
+      <div style="text-align:center;">
+        <button class="cancel-btn" onclick="cancelJob('${job.id}')">Cancel analysis</button>
+        <div class="cancel-hint" style="margin:8px auto 0;">
+          ${job.cancel_requested
+            ? "Cancellation requested — stopping at the next stage boundary…"
+            : "Stops before the next pipeline stage; won't interrupt an in-flight LLM call."}
+        </div>
+      </div>
+    `;
+    renderPhaseStrip(null);
+    return;
+  }
+
+  if (job.status === "cancelled") {
+    main.innerHTML = `
+      <p class="section-title">Analysis cancelled</p>
+      <div class="empty-state">This job was cancelled before it finished — no report was generated.</div>
+    `;
+    renderPhaseStrip(null);
+    return;
+  }
+
+  if (job.status === "error") {
+    main.innerHTML = `
+      <p class="section-title">Analysis failed</p>
+      <div class="error-box">${escapeHtml(job.error || "Unknown error")}</div>
+    `;
+    renderPhaseStrip(null);
+    return;
+  }
+
+  const r = job.result;
+  renderPhaseStrip(r.event_category_counts);
+
+  const sevOrder = ["critical", "high", "medium", "low", "informational", "unknown"];
+  const sevColors = { critical: "var(--sev-critical)", high: "var(--sev-high)", medium: "var(--sev-medium)", low: "var(--sev-low)", informational: "var(--sev-info)", unknown: "var(--sev-info)" };
+  const totalAlerts = sevOrder.reduce((acc, s) => acc + (r.alerts_by_severity[s] || []).length, 0);
+  const critCount = (r.alerts_by_severity.critical || []).length;
+  const highCount = (r.alerts_by_severity.high || []).length;
+
+  let alertsHtml = "";
+  if (totalAlerts === 0) {
+    alertsHtml = `<div class="no-alerts">No Sigma rule matches across ingested telemetry.</div>`;
+  } else {
+    alertsHtml = sevOrder.map(sev => {
+      const items = r.alerts_by_severity[sev] || [];
+      if (!items.length) return "";
+      const openAttr = (sev === "critical" || sev === "high") ? "open" : "";
+      const rows = items.map(a => `
+        <div class="alert-row">
+          <div class="title">Detected: ${escapeHtml(a.title)}</div>
+          <div class="tags">${a.tags.map(escapeHtml).join(" · ") || "no mitre tags"}</div>
+          <div class="rule-path">Sigma rule file: ${escapeHtml(a.rule_path || "unknown")}</div>
+          <div class="examples">
+            ${a.examples.map(ex => `<div class="example"><b>${escapeHtml(ex.timestamp || "n/a")}</b> — ${escapeHtml(ex.source)} <span style="opacity:.6">(${escapeHtml(ex.category || "")})</span></div>`).join("")}
+            ${a.count > a.examples.length ? `<div class="example">…and ${a.count - a.examples.length} more match(es)</div>` : ""}
+          </div>
+        </div>
+      `).join("");
+      return `
+        <details class="sev-group" ${openAttr}>
+          <summary>
+            <span class="sev-dot" style="background:${sevColors[sev]}"></span>
+            ${sev.toUpperCase()}
+            <span class="sev-badge-count">${items.length} rule${items.length !== 1 ? "s" : ""}</span>
+          </summary>
+          ${rows}
+        </details>
+      `;
+    }).join("");
+  }
+
+  main.innerHTML = `
+    <div class="stat-strip">
+      <div class="stat"><div class="n">${r.total_events}</div><div class="l">Events Ingested</div></div>
+      <div class="stat"><div class="n" style="color:${totalAlerts ? 'var(--sev-high)' : 'var(--accent-signal)'}">${totalAlerts}</div><div class="l">Sigma Alerts</div></div>
+      <div class="stat"><div class="n" style="color:var(--sev-critical)">${critCount}</div><div class="l">Critical</div></div>
+      <div class="stat"><div class="n" style="color:var(--sev-high)">${highCount}</div><div class="l">High</div></div>
+    </div>
+
+    <p class="section-title">Alert Triage</p>
+    ${alertsHtml}
+
+    <p class="section-title">Kill Chain Narrative</p>
+    <div class="report-body">${formatReport(r.ai_report)}</div>
+
+    <details class="raw-tree">
+      <summary>▸ Raw process tree &amp; registry forensic dump</summary>
+      <pre>${escapeHtml(r.tree_text)}</pre>
+    </details>
+  `;
+}
+
+function renderPhaseStrip(categoryCounts) {
+  const el = document.getElementById("phase-strip");
+  el.innerHTML = PHASES.map(p => {
+    const count = categoryCounts ? p.categories.reduce((sum, c) => sum + (categoryCounts[c] || 0), 0) : 0;
+    const lit = categoryCounts && count > 0;
+    return `
+      <div class="phase ${lit ? 'lit' : ''}" style="--phase-color:${p.color}">
+        ${p.label}
+        <span class="count">${categoryCounts ? count : '–'}</span>
+      </div>
+    `;
+  }).join("");
+}
+
+function formatReport(text) {
+  if (!text) return "<em>No narrative generated.</em>";
+  const escaped = escapeHtml(text);
+  // Wrap lines that look like report section headers, e.g. "1. EXECUTIVE SUMMARY:"
+  return escaped.split("\n").map(line => {
+    if (/^\s*\d+\.\s+[A-Z0-9 /&()-]{4,}:?\s*$/.test(line)) {
+      return `<span class="hd">${line.trim()}</span>`;
+    }
+    return line;
+  }).join("\n");
+}
+
+function escapeHtml(str) {
+  return String(str).replace(/[&<>"']/g, m => ({
+    "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"
+  }[m]));
+}
+
+renderPhaseStrip(null);
+loadCurrentUser();
+refreshJobs();
+pollTimer = setInterval(refreshJobs, 1500);
+</script>
+</body>
+</html>

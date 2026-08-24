@@ -1,0 +1,26 @@
+# --- Python ---
+__pycache__/
+*.pyc
+.venv/
+venv/
+*.egg-info/
+
+# --- Secrets / environment ---
+.env
+*.env
+
+# --- Uploaded evidence & generated data (never commit real forensic artifacts) ---
+uploads/
+storage/uploads/
+storage/jobs/
+storage/users.db
+storage/*.db
+
+# --- Sigma rules (often a separate SigmaHQ checkout, sometimes huge) ---
+sigma_rules/*
+!sigma_rules/.gitkeep
+
+# --- OS / editor cruft ---
+.DS_Store
+.vscode/
+*.swp

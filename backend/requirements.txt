@@ -1,0 +1,25 @@
+# --- Web framework ---
+fastapi==0.115.0
+uvicorn[standard]==0.30.6
+python-multipart==0.0.9
+
+# --- Auth (multi-user) ---
+sqlalchemy==2.0.35
+passlib[bcrypt]==1.7.4
+bcrypt==4.0.1
+# passlib 1.7.4 (unmaintained since 2020) breaks with bcrypt>=4.1, which
+# removed the internal __about__ attribute passlib's version check relies
+# on. Pinning bcrypt below that avoids the "password cannot be longer than
+# 72 bytes" error, which is actually a broken self-test, not a real password
+# length issue.
+itsdangerous==2.2.0
+
+# --- Your pipeline's dependencies ---
+python-evtx
+python-registry
+openai
+networkx
+pysigma
+# NOTE: hybrid_pipeline.py also imports `sigma_rule_matcher.RuleMatcher`,
+# which is not a PyPI package. Make sure it's importable from backend/dfir_lib/
+# or on PYTHONPATH.
